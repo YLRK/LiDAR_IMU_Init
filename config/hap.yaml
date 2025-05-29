@@ -6,7 +6,7 @@ common:
 
 
 preprocess:
-    lidar_type: 1               # Livox series LiDAR
+    lidar_type: 5               # Livox series LiDAR
     feature_extract_en: false
     scan_line: 6
     blind: 2

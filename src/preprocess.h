@@ -5,7 +5,7 @@
 #include <ros/ros.h>
 #include <pcl_conversions/pcl_conversions.h>
 #include <sensor_msgs/PointCloud2.h>
-#include <livox_ros_driver/CustomMsg.h>
+#include <livox_ros_driver2/CustomMsg.h>
 
 using namespace std;
 
@@ -115,6 +115,27 @@ POINT_CLOUD_REGISTER_POINT_STRUCT(robosense_ros::Point,
                                           (double, timestamp, timestamp)
 )
 
+namespace livox_ros_driver2_point2 {
+    struct EIGEN_ALIGN16 Point {
+        PCL_ADD_POINT4D;
+        float intensity;
+        std::uint8_t tag;
+        std::uint8_t line;
+        double timestamp;
+        EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+    };
+}
+
+POINT_CLOUD_REGISTER_POINT_STRUCT(livox_ros_driver2_point2::Point,
+                                  (float, x, x)
+                                          (float, y, y)
+                                          (float, z, z)
+                                          (float, intensity, intensity)
+                                          (std::uint8_t, tag, tag)
+                                          (std::uint8_t, line, line)
+                                          (double, timestamp, timestamp)
+)
+
 class Preprocess
 {
   public:
@@ -123,8 +144,8 @@ class Preprocess
   Preprocess();
   ~Preprocess();
   
-  void process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
-  void process_cut_frame_livox(const livox_ros_driver::CustomMsg::ConstPtr &msg, deque<PointCloudXYZI::Ptr> &pcl_out, deque<double> &time_lidar, const int required_frame_num, int scan_count);
+  void process(const livox_ros_driver2::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
+  void process_cut_frame_livox(const livox_ros_driver2::CustomMsg::ConstPtr &msg, deque<PointCloudXYZI::Ptr> &pcl_out, deque<double> &time_lidar, const int required_frame_num, int scan_count);
   void process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out);
   void process_cut_frame_pcl2(const sensor_msgs::PointCloud2::ConstPtr &msg, deque<PointCloudXYZI::Ptr> &pcl_out, deque<double> &time_lidar, const int required_frame_num, int scan_count);
   void set(bool feat_en, int lid_type, double bld, int pfilt_num);
@@ -140,7 +161,7 @@ class Preprocess
     
 
   private:
-  void avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg);
+  void avia_handler(const livox_ros_driver2::CustomMsg::ConstPtr &msg);
   void oust_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void velodyne_handler(const sensor_msgs::PointCloud2::ConstPtr &msg);
   void velodyne_handler_kitti(const sensor_msgs::PointCloud2::ConstPtr &msg);

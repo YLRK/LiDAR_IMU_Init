@@ -42,12 +42,12 @@ void Preprocess::set(bool feat_en, int lid_type, double bld, int pfilt_num) {
     point_filter_num = pfilt_num;
 }
 
-void Preprocess::process(const livox_ros_driver::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out) {
+void Preprocess::process(const livox_ros_driver2::CustomMsg::ConstPtr &msg, PointCloudXYZI::Ptr &pcl_out) {
     avia_handler(msg);
     *pcl_out = pl_surf;
 }
 
-void Preprocess::process_cut_frame_livox(const livox_ros_driver::CustomMsg::ConstPtr &msg,
+void Preprocess::process_cut_frame_livox(const livox_ros_driver2::CustomMsg::ConstPtr &msg,
                                          deque<PointCloudXYZI::Ptr> &pcl_out, deque<double> &time_lidar,
                                          const int required_frame_num, int scan_count) {
     int plsize = msg->point_num;
@@ -207,11 +207,13 @@ Preprocess::process_cut_frame_pcl2(const sensor_msgs::PointCloud2::ConstPtr &msg
             }
         }
     } else if(lidar_type == PANDAR) {
+
         pcl::PointCloud<pandar_ros::Point> pl_orig;
         pcl::fromROSMsg(*msg, pl_orig);
         int plsize = pl_orig.points.size();
         pl_surf.reserve(plsize);
-        for (int i = 0; i < plsize; i++) {
+
+        for (int i = 0; i < plsize; i++) {            
             PointType added_pt;
             added_pt.normal_x = 0;
             added_pt.normal_y = 0;
@@ -220,17 +222,43 @@ Preprocess::process_cut_frame_pcl2(const sensor_msgs::PointCloud2::ConstPtr &msg
             added_pt.y = pl_orig.points[i].y;
             added_pt.z = pl_orig.points[i].z;
             added_pt.intensity = pl_orig.points[i].intensity;
-//            added_pt.curvature = (pl_orig.points[i].timestamp - msg->header.stamp.toSec()) * 1000;  //s to ms
-            added_pt.curvature = (pl_orig.points[i].timestamp - pl_orig.points[0].timestamp) * 1000;  //s to ms
-
+            // 根据时间戳或旋转模型计算相对于基准点的时间差（毫秒）
+            added_pt.curvature = (pl_orig.points[i].timestamp - msg->header.stamp.toSec()) * 1000.0;
+            // 计算点到原点的距离，用于盲区过滤
             double dist = added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z;
-            if ( dist < blind * blind || isnan(added_pt.x) || isnan(added_pt.y) || isnan(added_pt.z))
+            if (dist < blind * blind || isnan(added_pt.x) || isnan(added_pt.y) || isnan(added_pt.z))
                 continue;
 
-            if (i % point_filter_num == 0 && pl_orig.points[i].ring < N_SCANS) {
+            if ((abs(added_pt.x - pl_surf.points.back().x) > 1e-7)
+                || (abs(added_pt.y - pl_surf.points.back().y) > 1e-7)
+                || (abs(added_pt.z - pl_surf.points.back().z) > 1e-7)) {
                 pl_surf.points.push_back(added_pt);
             }
         }
+//         pcl::PointCloud<pandar_ros::Point> pl_orig;
+//         pcl::fromROSMsg(*msg, pl_orig);
+//         int plsize = pl_orig.points.size();
+//         pl_surf.reserve(plsize);
+//         for (int i = 0; i < plsize; i++) {
+//             PointType added_pt;
+//             added_pt.normal_x = 0;
+//             added_pt.normal_y = 0;
+//             added_pt.normal_z = 0;
+//             added_pt.x = pl_orig.points[i].x;
+//             added_pt.y = pl_orig.points[i].y;
+//             added_pt.z = pl_orig.points[i].z;
+//             added_pt.intensity = pl_orig.points[i].intensity;
+// //            added_pt.curvature = (pl_orig.points[i].timestamp - msg->header.stamp.toSec()) * 1000;  //s to ms
+//             added_pt.curvature = (pl_orig.points[i].timestamp - pl_orig.points[0].timestamp) * 1000;  //s to ms
+
+//             double dist = added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z;
+//             if ( dist < blind * blind || isnan(added_pt.x) || isnan(added_pt.y) || isnan(added_pt.z))
+//                 continue;
+
+//             if (i % point_filter_num == 0 && pl_orig.points[i].ring < N_SCANS) {
+//                 pl_surf.points.push_back(added_pt);
+//             }
+//         }
     }else if(lidar_type == ROBOSENSE){
         pcl::PointCloud<robosense_ros::Point> pl_orig;
         pcl::fromROSMsg(*msg, pl_orig);
@@ -295,12 +323,48 @@ Preprocess::process_cut_frame_pcl2(const sensor_msgs::PointCloud2::ConstPtr &msg
                 pl_surf.points.push_back(added_pt);
             }
         }
-    }else{
+    }else if(lidar_type == HAP){
+        pcl::PointCloud<livox_ros_driver2_point2::Point> pl_orig;
+        pcl::fromROSMsg(*msg, pl_orig);
+        int plsize = pl_orig.points.size();
+        pl_surf.reserve(plsize);
+
+        // 获取第一个点的时间戳作为基准时间
+        double base_time = 0;
+        if (plsize > 0 && pl_orig.points[0].timestamp > 0) {
+            base_time = pl_orig.points[0].timestamp;
+            given_offset_time = true;
+        }
+
+        for (int i = 0; i < plsize; i++) {
+            if (i % point_filter_num != 0) continue;  // 点云降采样
+            
+            PointType added_pt;
+            added_pt.normal_x = 0;
+            added_pt.normal_y = 0;
+            added_pt.normal_z = 0;
+            added_pt.x = pl_orig.points[i].x;
+            added_pt.y = pl_orig.points[i].y;
+            added_pt.z = pl_orig.points[i].z;
+            added_pt.intensity = pl_orig.points[i].intensity;
+            // 根据时间戳或旋转模型计算相对于基准点的时间差（毫秒）
+            added_pt.curvature = (pl_orig.points[i].timestamp - base_time) * 1000.0;
+            // 计算点到原点的距离，用于盲区过滤
+            double dist = added_pt.x * added_pt.x + added_pt.y * added_pt.y + added_pt.z * added_pt.z;
+            if (dist < blind * blind || isnan(added_pt.x) || isnan(added_pt.y) || isnan(added_pt.z))
+                continue;
+
+            if ((abs(added_pt.x - pl_surf.points.back().x) > 1e-7)
+                || (abs(added_pt.y - pl_surf.points.back().y) > 1e-7)
+                || (abs(added_pt.z - pl_surf.points.back().z) > 1e-7)) {
+                pl_surf.points.push_back(added_pt);
+            }
+        }
+    }
+    else{
         cout << BOLDRED << "Wrong LiDAR Type!!!" << endl;
         return;
     }
-
-
     sort(pl_surf.points.begin(), pl_surf.points.end(), time_list_cut_frame);
 
     //ms
@@ -353,7 +417,7 @@ void Preprocess::process(const sensor_msgs::PointCloud2::ConstPtr &msg, PointClo
     *pcl_out = pl_surf;
 }
 
-void Preprocess::avia_handler(const livox_ros_driver::CustomMsg::ConstPtr &msg) {
+void Preprocess::avia_handler(const livox_ros_driver2::CustomMsg::ConstPtr &msg) {
     pl_surf.clear();
     pl_corn.clear();
     pl_full.clear();
